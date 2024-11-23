@@ -1,124 +1,216 @@
 # report_generator/interface/app.py
 import gradio as gr
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 from dataclasses import dataclass
 from report_generator.core.models.manager import ModelManager
 from report_generator.core.agent import ReportGeneratorAgent
-from report_generator.app.config import Config
+from report_generator.core.data.connection_manager import DatabaseConnectionManager
 
 @dataclass
-class ModelInfo:
-    provider: str
-    name: str
-    requires_api: bool
-    api_key: Optional[str] = None
+class ConnectionConfig:
+    type: str
+    config: Dict[str, Any]
 
 class ReportGeneratorInterface:
     def __init__(self):
         self.model_manager = ModelManager()
-        self.current_api_keys: Dict[str, str] = {}
+        self.db_manager = DatabaseConnectionManager()
+        self.current_connections: Dict[str, ConnectionConfig] = {}
         
     def create_interface(self):
-        """Create Gradio interface with dynamic API key management"""
         with gr.Blocks(title="Report Generator Agent") as app:
             gr.Markdown("# Intelligent Report Generator")
             
-            # Create state for API keys
+            # States for configurations
             api_key_state = gr.State({})
+            db_config_state = gr.State({})
             
-            with gr.Row():
-                with gr.Column():
-                    # Model Selection
-                    provider = gr.Radio(
-                        choices=['local', 'openai', 'anthropic'],
-                        value='local',
-                        label="Model Provider"
-                    )
+            with gr.Tabs():
+                # Model Configuration Tab
+                with gr.Tab("Model Configuration"):
+                    with gr.Row():
+                        provider = gr.Radio(
+                            choices=['local', 'openai', 'anthropic'],
+                            value='local',
+                            label="Model Provider"
+                        )
+                        model_name = gr.Dropdown(
+                            choices=self.model_manager.get_available_models('local'),
+                            value='mixtral',
+                            label="Model"
+                        )
+                        api_key_input = gr.Textbox(
+                            label="API Key",
+                            placeholder="Enter API key if required",
+                            type="password",
+                            visible=False
+                        )
+
+                # Data Source Configuration Tab
+                with gr.Tab("Data Source"):
+                    with gr.Row():
+                        data_source = gr.Radio(
+                            choices=["file", "mongodb", "mysql", "postgresql"],
+                            value="file",
+                            label="Data Source"
+                        )
                     
-                    model_name = gr.Dropdown(
-                        choices=self.model_manager.get_available_models('local'),
-                        value='mixtral',
-                        label="Model"
-                    )
+                    # File Upload Section
+                    with gr.Group() as file_group:
+                        file_input = gr.File(
+                            label="Upload Data File",
+                            file_types=[".csv", ".json", ".xlsx", ".xls"]
+                        )
                     
-                    # Dynamic API Key Input
-                    api_key_input = gr.Textbox(
-                        label="API Key",
-                        placeholder="Enter API key if required",
-                        type="password",
-                        visible=False
-                    )
+                    # MongoDB Configuration
+                    with gr.Group(visible=False) as mongo_group:
+                        mongo_uri = gr.Textbox(
+                            label="MongoDB URI",
+                            placeholder="mongodb://username:password@host:port"
+                        )
+                        mongo_db = gr.Textbox(
+                            label="Database Name"
+                        )
+                        mongo_collection = gr.Textbox(
+                            label="Collection Name"
+                        )
                     
-                    # File Upload and Options
-                    file_input = gr.File(
-                        label="Upload Data File",
-                        file_types=[".csv", ".json", ".xlsx", ".xls"]
-                    )
+                    # MySQL Configuration
+                    with gr.Group(visible=False) as mysql_group:
+                        mysql_host = gr.Textbox(label="Host")
+                        mysql_port = gr.Number(label="Port", value=3306)
+                        mysql_user = gr.Textbox(label="Username")
+                        mysql_password = gr.Textbox(
+                            label="Password",
+                            type="password"
+                        )
+                        mysql_db = gr.Textbox(label="Database Name")
                     
+                    # PostgreSQL Configuration
+                    with gr.Group(visible=False) as postgres_group:
+                        postgres_host = gr.Textbox(label="Host")
+                        postgres_port = gr.Number(label="Port", value=5432)
+                        postgres_user = gr.Textbox(label="Username")
+                        postgres_password = gr.Textbox(
+                            label="Password",
+                            type="password"
+                        )
+                        postgres_db = gr.Textbox(label="Database Name")
+                    
+                    # Test Connection Button
+                    test_connection_btn = gr.Button("Test Connection")
+                    connection_status = gr.Textbox(
+                        label="Connection Status",
+                        interactive=False
+                    )
+
+                # Report Configuration Tab
+                with gr.Tab("Report Generation"):
                     query_input = gr.Textbox(
                         label="What kind of report do you need?",
-                        placeholder="E.g., Generate a sales report for Q3 with monthly trends"
+                        placeholder="E.g., Generate a sales report for Q3 with monthly trends",
+                        lines=3
                     )
-                    
                     format_input = gr.Dropdown(
                         choices=["pdf", "docx", "html"],
                         value="pdf",
                         label="Output Format"
                     )
-                    
                     viz_input = gr.Checkbox(
                         label="Include Visualizations",
                         value=True
                     )
-                
-                with gr.Column():
-                    output = gr.File(label="Generated Report")
-                    status_output = gr.Textbox(label="Status", interactive=False)
-            
-            def update_model_visibility(provider: str):
-                """Update model dropdown and API key input visibility"""
-                models = self.model_manager.get_available_models(provider)
-                needs_api = provider in ['openai', 'anthropic']
+                    
+                    generate_btn = gr.Button("Generate Report")
+                    with gr.Row():
+                        output = gr.File(label="Generated Report")
+                        status_output = gr.Textbox(
+                            label="Status",
+                            interactive=False
+                        )
+
+            def update_data_source_visibility(source):
+                """Update visibility of data source configuration groups"""
                 return {
-                    model_name: gr.Dropdown(choices=models),
-                    api_key_input: gr.Textbox(visible=needs_api)
+                    file_group: source == "file",
+                    mongo_group: source == "mongodb",
+                    mysql_group: source == "mysql",
+                    postgres_group: source == "postgresql"
                 }
             
-            def validate_api_key(provider: str, api_key: str) -> str:
-                """Validate API key based on provider"""
-                if not api_key and provider in ['openai', 'anthropic']:
-                    return "API key is required for this model provider"
-                return ""
-            
-            def update_api_key(provider: str, api_key: str, state: Dict[str, str]) -> Dict[str, str]:
-                """Update API key in state"""
-                if provider in ['openai', 'anthropic']:
-                    state[provider] = api_key
-                return state
+            async def test_connection(
+                source: str,
+                mongo_uri: str,
+                mongo_db: str,
+                mongo_collection: str,
+                mysql_host: str,
+                mysql_port: int,
+                mysql_user: str,
+                mysql_password: str,
+                mysql_db: str,
+                postgres_host: str,
+                postgres_port: int,
+                postgres_user: str,
+                postgres_password: str,
+                postgres_db: str
+            ) -> str:
+                """Test database connection based on selected source"""
+                try:
+                    if source == "mongodb":
+                        config = {
+                            "uri": mongo_uri,
+                            "database": mongo_db,
+                            "collection": mongo_collection
+                        }
+                        await self.db_manager.test_mongodb_connection(config)
+                    elif source == "mysql":
+                        config = {
+                            "host": mysql_host,
+                            "port": mysql_port,
+                            "user": mysql_user,
+                            "password": mysql_password,
+                            "database": mysql_db
+                        }
+                        await self.db_manager.test_mysql_connection(config)
+                    elif source == "postgresql":
+                        config = {
+                            "host": postgres_host,
+                            "port": postgres_port,
+                            "user": postgres_user,
+                            "password": postgres_password,
+                            "database": postgres_db
+                        }
+                        await self.db_manager.test_postgresql_connection(config)
+                    else:
+                        return "No connection test needed for file input"
+                    
+                    return "Connection successful! ✅"
+                except Exception as e:
+                    return f"Connection failed: {str(e)} ❌"
             
             async def generate_report(
+                source: str,
                 provider: str,
                 model_name: str,
                 api_key: str,
-                file: gr.File,
                 query: str,
-                output_format: str,
+                format: str,
                 include_viz: bool,
-                api_key_state: Dict[str, str]
+                **db_params
             ):
-                """Handle report generation with API key validation"""
+                """Generate report with dynamic configuration"""
                 try:
-                    # Validate API key if needed
-                    if provider in ['openai', 'anthropic']:
-                        if not api_key:
-                            return None, "API key is required"
-                        api_key_state[provider] = api_key
+                    # Validate and set up model
+                    if provider in ['openai', 'anthropic'] and not api_key:
+                        return None, "API key is required"
                     
-                    # Initialize model with API key if needed
-                    model = self.model_manager.get_model(
-                        provider,
-                        model_name,
-                        api_key_state.get(provider)
+                    model = self.model_manager.get_model(provider, model_name, api_key)
+                    
+                    # Set up data source
+                    data_config = self._get_data_config(source, **db_params)
+                    data_source = await self.db_manager.get_data_source(
+                        source,
+                        data_config
                     )
                     
                     # Generate report
@@ -126,8 +218,8 @@ class ReportGeneratorInterface:
                     result = await agent.generate_report(
                         query=query,
                         context={
-                            "file": file,
-                            "format": output_format,
+                            "data_source": data_source,
+                            "format": format,
                             "include_viz": include_viz
                         }
                     )
@@ -135,34 +227,61 @@ class ReportGeneratorInterface:
                     return result, "Report generated successfully"
                 except Exception as e:
                     return None, f"Error: {str(e)}"
-            
+                
+            def _get_data_config(self, source: str, **params) -> Dict[str, Any]:
+                """Build data source configuration"""
+                if source == "mongodb":
+                    return {
+                        "uri": params["mongo_uri"],
+                        "database": params["mongo_db"],
+                        "collection": params["mongo_collection"]
+                    }
+                elif source == "mysql":
+                    return {
+                        "host": params["mysql_host"],
+                        "port": params["mysql_port"],
+                        "user": params["mysql_user"],
+                        "password": params["mysql_password"],
+                        "database": params["mysql_db"]
+                    }
+                elif source == "postgresql":
+                    return {
+                        "host": params["postgres_host"],
+                        "port": params["postgres_port"],
+                        "user": params["postgres_user"],
+                        "password": params["postgres_password"],
+                        "database": params["postgres_db"]
+                    }
+                return {}
+
             # Set up event handlers
-            provider.change(
-                fn=update_model_visibility,
-                inputs=[provider],
-                outputs=[model_name, api_key_input]
+            data_source.change(
+                fn=update_data_source_visibility,
+                inputs=[data_source],
+                outputs=[file_group, mongo_group, mysql_group, postgres_group]
             )
             
-            api_key_input.change(
-                fn=update_api_key,
-                inputs=[provider, api_key_input, api_key_state],
-                outputs=[api_key_state]
+            test_connection_btn.click(
+                fn=test_connection,
+                inputs=[
+                    data_source,
+                    mongo_uri, mongo_db, mongo_collection,
+                    mysql_host, mysql_port, mysql_user, mysql_password, mysql_db,
+                    postgres_host, postgres_port, postgres_user, postgres_password, postgres_db
+                ],
+                outputs=[connection_status]
             )
             
-            submit_btn = gr.Button("Generate Report")
-            submit_btn.click(
+            generate_btn.click(
                 fn=generate_report,
                 inputs=[
-                    provider,
-                    model_name,
-                    api_key_input,
-                    file_input,
-                    query_input,
-                    format_input,
-                    viz_input,
-                    api_key_state
+                    data_source, provider, model_name, api_key_input,
+                    query_input, format_input, viz_input,
+                    mongo_uri, mongo_db, mongo_collection,
+                    mysql_host, mysql_port, mysql_user, mysql_password, mysql_db,
+                    postgres_host, postgres_port, postgres_user, postgres_password, postgres_db
                 ],
                 outputs=[output, status_output]
             )
-        
+            
         return app
