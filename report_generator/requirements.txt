@@ -1,28 +1,66 @@
-# Core Dependencies
-python-dotenv
-llama-index
-llama-index-core
-llama-index-llms-openai
-llama-index-llms-anthropic
+# Core packages
+llama-index==0.9.3
+anthropic>=0.11.0,<0.12.0  # Specific version for compatibility
+langchain>=0.0.316
+openai>=1.12.0
+
+# UI Framework
+gradio>=4.0.0
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+pytz>=2023.3
 
 # Document Processing
-python-docx
-fpdf2
-plotly
-plotly-express
+python-docx>=0.8.11
+fpdf2>=2.7.6
+openpyxl>=3.1.2  # For Excel file support
+python-magic>=0.4.27  # For file type detection
 
-# HTTP Client
-aiohttp
+# Visualization
+plotly>=5.18.0
+matplotlib>=3.7.1
+kaleido>=0.2.1  # For static image export in plotly
 
-# API Clients
-openai
-anthropic
+# Database Support
+motor>=3.3.0  # MongoDB async driver
+aiomysql>=0.2.0  # MySQL async driver
+asyncpg>=0.29.0  # PostgreSQL async driver
+sqlalchemy>=2.0.0  # SQL ORM
 
-# Database
-pymongo
-sqlalchemy
+# Embeddings and ML
+transformers>=4.30.0
+torch>=2.0.0
+sentence-transformers>=2.2.2
+
+# HTTP and API
+aiohttp>=3.9.1
+requests>=2.31.0
 
 # Utilities
-pyyaml
-pandas
-numpy
+python-dotenv>=1.0.0
+tqdm>=4.66.1  # For progress bars
+pyyaml>=6.0.1  # For configuration files
+typing-extensions>=4.5.0
+tenacity>=8.2.0  # For retrying failed operations
+
+# Development Tools (optional)
+pytest>=7.4.3
+black>=23.11.0
+isort>=5.12.0
+flake8>=6.1.0
+mypy>=1.7.1
+
+# Async Support
+aiofiles>=23.2.1
+asyncio>=3.4.3
+
+# Memory Management
+psutil>=5.9.0
+
+# Logging
+python-json-logger>=2.0.7
+
+#env
+python-dotenv>=1.0.0
