@@ -100,7 +100,7 @@ class OllamaManager:
                     return False
         
         # Check and pull required models
-        required_models = ["llama2", "mistral", "codellama"]
+        required_models = ["llama3", "mistral", "llama3.2-vision"]
         for model in required_models:
             if not self.handler.ensure_model_pulled(model):
                 logger.warning(f"Failed to pull model: {model}")

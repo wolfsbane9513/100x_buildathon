@@ -1,8 +1,9 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any
-from pydantic import BaseModel
+from dataclasses import dataclass
 
-class LLMResponse(BaseModel):
+@dataclass
+class LLMResponse:
     content: str
     raw_response: Dict[str, Any]
 
