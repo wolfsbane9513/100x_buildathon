@@ -1,0 +1,28 @@
+# Core Dependencies
+python-dotenv
+llama-index
+llama-index-core
+llama-index-llms-openai
+llama-index-llms-anthropic
+
+# Document Processing
+python-docx
+fpdf2
+plotly
+plotly-express
+
+# HTTP Client
+aiohttp
+
+# API Clients
+openai
+anthropic
+
+# Database
+pymongo
+sqlalchemy
+
+# Utilities
+pyyaml
+pandas
+numpy
