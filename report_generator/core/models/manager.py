@@ -26,19 +26,42 @@ class ModelManager:
         self.logger = logging.getLogger(__name__)
 
     def _lazy_load_models(self) -> None:
-        """Load models only when needed"""
+        """Load models only when needed."""
         if self._available_models is None:
             self._available_models = {}
             
-            # Initialize providers without checking models yet
+            # Load OpenAI models
             if config.OPENAI_API_KEY:
                 self._available_models['openai'] = {
                     'gpt-3.5-turbo': lambda: OpenAILLM('gpt-3.5-turbo', config.OPENAI_API_KEY),
                     'gpt-4': lambda: OpenAILLM('gpt-4', config.OPENAI_API_KEY),
                 }
-            
-            # Add empty local models section - will be populated on demand
+            else:
+                self._available_models['openai'] = {
+                    'gpt-3.5-turbo': lambda: OpenAILLM('gpt-3.5-turbo', None),
+                    'gpt-4': lambda: OpenAILLM('gpt-4', None),
+                }
+
+            # Load local Ollama models
             self._available_models['local'] = {}
+            models = self._get_available_local_models()
+            for model in models:
+                self._available_models['local'][model] = lambda: OllamaLLM(model)
+
+    def _get_available_local_models(self) -> List[str]:
+        """Get list of available Ollama models."""
+        try:
+            result = subprocess.run(
+                ['ollama', 'list'], capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')[1:]  # Skip header
+                return [line.split()[0] for line in lines if line.strip()]
+            return []
+        except Exception as e:
+            self.logger.error(f"Error checking local Ollama models: {str(e)}")
+            return []
+
 
     def get_available_providers(self) -> List[str]:
         """Get list of available model providers."""
@@ -51,18 +74,21 @@ class ModelManager:
 
     def get_available_models(self, provider: str) -> List[str]:
         """Get list of available models for a provider."""
-        if provider not in self.get_available_providers():
-            return []
-
-        if provider == 'local':
-            return self._get_local_models()
-        
         self._lazy_load_models()
-        return list(self._available_models.get(provider, {}).keys())
+        models = list(self._available_models.get(provider, {}).keys())
+        logger.info(f"Available models for provider '{provider}': {models}")  # Debugging
+        return models
+
 
     def _get_local_models(self) -> List[str]:
         """Get list of available Ollama models"""
         try:
+            # Check if models are available locally first
+            available_models = self._get_available_local_models()
+            if available_models:
+                return available_models
+
+            # If not available locally, fallback to running 'ollama list'
             result = subprocess.run(
                 ['ollama', 'list'],
                 capture_output=True,
@@ -83,18 +109,27 @@ class ModelManager:
             self.logger.error(f"Error checking Ollama models: {str(e)}")
             return []
 
+
     def get_model(self, provider: str, model_name: str, api_key: Optional[str] = None) -> BaseLLM:
         """Get model instance."""
         try:
             if provider == 'local':
-                return OllamaLLM(model_name)
+                # Check if model is available locally first
+                if self.verify_model_availability(provider, model_name):
+                    return OllamaLLM(model_name)
+                else:
+                    # If not available locally, attempt to pull the model
+                    if self.ensure_model_pulled(model_name):
+                        return OllamaLLM(model_name)
+                    else:
+                        raise ValueError(f"Model '{model_name}' is not available")
             
             if provider == 'openai':
                 key = api_key or config.OPENAI_API_KEY
                 if not key:
                     raise ValueError("OpenAI API key required")
                 return OpenAILLM(model_name, key)
-                
+            
             raise ValueError(f"Unknown provider: {provider}")
             
         except Exception as e:

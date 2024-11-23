@@ -24,10 +24,11 @@ class ReportGeneratorInterface:
                         interactive=True
                     )
                     
-                    model_name = gr.Dropdown(
-                        choices=[],
+                    model_name = gr.Radio(
+                        choices=[],  # Initially empty
                         label="Select Model",
-                        interactive=True
+                        interactive=True,
+                        value=None
                     )
                     
                     api_key = gr.Textbox(
@@ -51,33 +52,29 @@ class ReportGeneratorInterface:
                     )
                     
                     # File Upload Section
-                    with gr.Group() as file_group:
+                    with gr.Group(visible=False) as file_group:
                         file_input = gr.File(
                             label="Upload Data Files",
                             file_types=[".csv", ".json", ".xlsx", ".xls"],
                             file_count="multiple",
-                            visible=True,
                             interactive=True
                         )
                     
                     # Database Section
-                    with gr.Group() as db_group:
+                    with gr.Group(visible=False) as db_group:
                         db_type = gr.Radio(
                             choices=["MongoDB", "MySQL", "PostgreSQL"],
                             label="Database Type",
-                            visible=False,
                             interactive=True
                         )
                         
                         connection_info = gr.JSON(
                             label="Connection Details",
-                            visible=False
+                            visible=False  # Keep it visible only when needed
                         )
                         
-                        test_connection = gr.Button(
-                            "Test Connection",
-                            visible=False
-                        )
+                        test_connection = gr.Button("Test Connection")
+
 
                 # Report Configuration Tab
                 with gr.Tab("Generate Report"):
@@ -110,17 +107,37 @@ class ReportGeneratorInterface:
             # Event Handlers
             def update_model_list(provider_value):
                 """Update model list when provider is selected"""
-                if not provider_value:
-                    return [], gr.update(visible=False), gr.update(visible=False)
-                
-                models = self.model_manager.get_available_models(provider_value)
-                provider_info = self.model_manager.get_provider_info(provider_value)
-                
-                return (
-                    models,
-                    gr.update(visible=provider_info.get('requires_key', False)),
-                    gr.update(visible=True)
-                )
+                try:
+                    logger.info(f"Provider selected: {provider_value}")
+                    if provider_value == "local":
+                        models = self.model_manager.get_available_models(provider_value)
+                        logger.info(f"Models available for 'local': {models}")
+                        if models:
+                            return (
+                                gr.update(choices=models, value=None),
+                                gr.update(visible=False),
+                                gr.update(visible=True)
+                            )
+                        else:
+                            return (
+                                gr.update(choices=[], value=None),
+                                gr.update(visible=False),
+                                gr.update(visible=False)
+                            )
+
+                    elif provider_value == "openai":
+                        models = ["gpt-3.5-turbo", "gpt-4"]
+                        logger.info(f"Models available for 'openai': {models}")
+                        return (
+                            gr.update(choices=models, value=None),
+                            gr.update(visible=True),
+                            gr.update(visible=True)
+                        )
+
+                    return gr.update(choices=[], value=None), gr.update(visible=False), gr.update(visible=False)
+                except Exception as e:
+                    logger.error(f"Error updating model list: {str(e)}")
+                    return gr.update(choices=[], value=None), gr.update(visible=False), gr.update(visible=False)
 
             def update_data_source(source_type):
                 """Update visible components based on data source selection"""
@@ -166,7 +183,6 @@ class ReportGeneratorInterface:
                     
                     # Start report generation
                     return "Report.pdf", "Processing..."  # Placeholder
-                    
                 except Exception as e:
                     logger.error(f"Error in report generation: {str(e)}")
                     return None, f"Error: {str(e)}"
@@ -186,17 +202,7 @@ class ReportGeneratorInterface:
             
             generate_btn.click(
                 fn=on_generate_click,
-                inputs=[
-                    provider,
-                    model_name,
-                    api_key,
-                    source_type,
-                    file_input,
-                    connection_info,
-                    query,
-                    format_type,
-                    include_viz
-                ],
+                inputs=[provider, model_name, api_key, source_type, file_input, connection_info, query, format_type, include_viz],
                 outputs=[output_file, status]
             )
 
