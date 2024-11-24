@@ -172,6 +172,9 @@ class ReportGeneratorInterface:
                     if not query_text:
                         return None, "Please enter a query"
                     
+                    if not files and source_type in ["File Upload", "Both"]:
+                        return None, "Please upload at least one file"
+                    
                     # Initialize model
                     model = self.model_manager.get_model(provider_value, model_name, api_key)
                     logger.info(f"Initializing model with provider: {provider_value}, model_name: {model_name}, api_key: {api_key}")
@@ -182,7 +185,7 @@ class ReportGeneratorInterface:
                     # Initialize agent
                     agent = ReportGeneratorAgent(model)
                     
-                    # Prepare context
+                    # Prepare context with actual file paths
                     context = {
                         'files': [f.name for f in files] if files else [],
                         'database': db_info if db_info else {},
@@ -197,13 +200,17 @@ class ReportGeneratorInterface:
                         include_viz=include_viz
                     )
                     
-                    # Create temporary file for the report
+                    # Create output file
                     os.makedirs('temp', exist_ok=True)
-                    report_path = f"temp/report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{format_type.lower()}"
-                    with open(report_path, 'w', encoding='utf-8') as f:
-                        f.write(result['content'])
+                    output_path = f"temp/report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.{format_type.lower()}"
                     
-                    return report_path, "Report generated successfully!"
+                    with open(output_path, 'w', encoding='utf-8') as f:
+                        f.write(result['content'])
+                        if result.get('analysis'):
+                            f.write("\n\nData Analysis:\n")
+                            f.write(str(result['analysis']))
+                    
+                    return output_path, "Report generated successfully!"
                     
                 except Exception as e:
                     logger.error(f"Error in report generation: {str(e)}")

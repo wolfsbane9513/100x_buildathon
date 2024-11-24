@@ -1,40 +1,15 @@
 from typing import Optional, Dict, Any
 from .base import BaseLLM, LLMResponse
 import aiohttp
-import logging
-
-logger = logging.getLogger(__name__)
-
-class OllamaLLM(BaseLLM):
-    def __init__(self, model_name: str, base_url: str = "http://localhost:11434"):
-        """Initialize Ollama LLM.
-        
-        Args:
-            model_name: Name of the Ollama model
-            base_url: Base URL for Ollama API
-        """
-        self.model_name = model_name
-        self.base_url = base_url
-        
-        # Required attributes
-        self.metadata = {
-            "model_name": model_name,
-            "provider": "local",
-            "base_url": base_url
-        }
-        self.context_window = 2048  # Default context window for local models
-        
-        logger.info(f"Initialized OllamaLLM with model: {model_name}")
-
-import httpx
-import logging
 import json
-from .base import BaseLLM, LLMResponse
+import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
 class OllamaLLM(BaseLLM):
     def __init__(self, model_name: str, base_url: str = "http://localhost:11434"):
+        """Initialize Ollama LLM."""
         self.model_name = model_name
         self.base_url = base_url
         self.metadata = {
@@ -42,37 +17,64 @@ class OllamaLLM(BaseLLM):
             "provider": "local",
             "base_url": base_url
         }
-        self.context_window = 2048  # Adjust as needed
-        logger.info(f"Initialized OllamaLLM with model: {self.metadata}")
+        self.context_window = 2048  # Default context window
 
     async def generate(self, prompt: str, **kwargs) -> LLMResponse:
+        """Generate text using Ollama API."""
         try:
-            async with httpx.AsyncClient() as client:
-                url = f"{self.base_url}/api/generate"
-                payload = {"prompt": prompt, "model": self.model_name, **kwargs}
-                logger.info(f"Sending request to {url} with payload: {payload}")
-                logger.info(f"Payload size: {len(str(payload))} characters")
+            logger.info(f"Sending request to {self.base_url}/api/generate")
+            payload = {
+                "model": self.model_name,
+                "prompt": prompt,
+                **kwargs
+            }
+            logger.info(f"Payload size: {len(str(prompt))} characters")
 
-                response = await client.post(url, json=payload)
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.base_url}/api/generate",
+                    json=payload
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        logger.error(f"Ollama API error: {error_text}")
+                        raise Exception(f"Ollama API returned status {response.status}: {error_text}")
 
-                logger.info(f"Response status code: {response.status_code}")
-                logger.info(f"Response headers: {response.headers}")
-                logger.info(f"Response content: {response.text}")
+                    # Initialize response text
+                    full_response = ""
+                    async for line in response.content:
+                        try:
+                            if line:
+                                # Decode and parse each line
+                                line_text = line.decode('utf-8').strip()
+                                if line_text:
+                                    try:
+                                        json_response = json.loads(line_text)
+                                        if 'response' in json_response:
+                                            full_response += json_response['response']
+                                    except json.JSONDecodeError as je:
+                                        logger.warning(f"Failed to parse JSON line: {line_text}")
+                                        continue
+                        except Exception as e:
+                            logger.warning(f"Error processing line: {str(e)}")
+                            continue
 
-                if response.status_code != 200:
-                    raise httpx.RequestError(f"Request failed with status {response.status_code}")
+                    logger.info("Successfully generated response")
+                    return LLMResponse(
+                        content=full_response,
+                        raw_response={"full_response": full_response}
+                    )
 
-                # Parse JSON response
-                try:
-                    content = response.json()
-                    return LLMResponse(content=content.get("text", ""), raw_response=content)
-                except json.JSONDecodeError as e:
-                    logger.error(f"JSON decoding error: {e}")
-                    raise
+        except aiohttp.ClientError as e:
+            logger.error(f"Network error: {str(e)}")
+            raise Exception(f"Network error while calling Ollama API: {str(e)}")
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decoding error: {str(e)}")
+            raise Exception(f"Error parsing Ollama response: {str(e)}")
         except Exception as e:
-            logger.error(f"Error in text generation: {e}")
+            logger.error(f"Error in text generation: {str(e)}")
             raise
-        
+
     async def chat(self, messages: list, **kwargs) -> LLMResponse:
         """Chat with the model."""
         try:
@@ -93,4 +95,24 @@ class OllamaLLM(BaseLLM):
             return "\n".join(formatted)
         except Exception as e:
             logger.error(f"Error formatting messages: {str(e)}")
+            raise
+
+    async def _process_stream(self, response: aiohttp.ClientResponse) -> str:
+        """Process streaming response from Ollama."""
+        full_response = []
+        try:
+            async for line in response.content:
+                if line:
+                    line_text = line.decode('utf-8').strip()
+                    if line_text:
+                        try:
+                            json_response = json.loads(line_text)
+                            if 'response' in json_response:
+                                full_response.append(json_response['response'])
+                        except json.JSONDecodeError:
+                            logger.warning(f"Failed to parse JSON: {line_text}")
+                            continue
+            return "".join(full_response)
+        except Exception as e:
+            logger.error(f"Error processing stream: {str(e)}")
             raise
