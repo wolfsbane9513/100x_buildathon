@@ -1,8 +1,11 @@
 import gradio as gr
 from typing import Dict, Optional, Any
+import logging
+import pandas as pd
+from datetime import datetime
+import os
 from report_generator.core.models.manager import ModelManager
 from report_generator.core.agent import ReportGeneratorAgent
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +28,7 @@ class ReportGeneratorInterface:
                     )
                     
                     model_name = gr.Radio(
-                        choices=[],  # Initially empty
+                        choices=[],
                         label="Select Model",
                         interactive=True,
                         value=None
@@ -52,7 +55,7 @@ class ReportGeneratorInterface:
                     )
                     
                     # File Upload Section
-                    with gr.Group(visible=False) as file_group:
+                    with gr.Group(visible=True) as file_group:
                         file_input = gr.File(
                             label="Upload Data Files",
                             file_types=[".csv", ".json", ".xlsx", ".xls"],
@@ -70,11 +73,10 @@ class ReportGeneratorInterface:
                         
                         connection_info = gr.JSON(
                             label="Connection Details",
-                            visible=False  # Keep it visible only when needed
+                            visible=False
                         )
                         
                         test_connection = gr.Button("Test Connection")
-
 
                 # Report Configuration Tab
                 with gr.Tab("Generate Report"):
@@ -104,7 +106,6 @@ class ReportGeneratorInterface:
                         output_file = gr.File(label="Generated Report")
                         status = gr.Textbox(label="Status")
 
-            # Event Handlers
             def update_model_list(provider_value):
                 """Update model list when provider is selected"""
                 try:
@@ -152,7 +153,7 @@ class ReportGeneratorInterface:
                     test_connection: gr.update(visible=show_db)
                 }
 
-            def on_generate_click(
+            async def generate_report(
                 provider_value,
                 model_name,
                 api_key,
@@ -171,18 +172,39 @@ class ReportGeneratorInterface:
                     if not query_text:
                         return None, "Please enter a query"
                     
-                    # Initialize model only when needed
-                    model = self.model_manager.get_model(
-                        provider_value,
-                        model_name,
-                        api_key
-                    )
+                    # Initialize model
+                    model = self.model_manager.get_model(provider_value, model_name, api_key)
+                    logger.info(f"Initializing model with provider: {provider_value}, model_name: {model_name}, api_key: {api_key}")
+                    logger.info(f"Using model: {model}, type: {type(model)}")
+                    logger.info(f"Model metadata: {model.metadata}")
+                    logger.info(f"Context window: {model.context_window}")
                     
                     # Initialize agent
                     agent = ReportGeneratorAgent(model)
                     
-                    # Start report generation
-                    return "Report.pdf", "Processing..."  # Placeholder
+                    # Prepare context
+                    context = {
+                        'files': [f.name for f in files] if files else [],
+                        'database': db_info if db_info else {},
+                        'source_type': source_type
+                    }
+                    
+                    # Generate report
+                    result = await agent.generate_report(
+                        query=query_text,
+                        context=context,
+                        output_format=format_type.lower(),
+                        include_viz=include_viz
+                    )
+                    
+                    # Create temporary file for the report
+                    os.makedirs('temp', exist_ok=True)
+                    report_path = f"temp/report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{format_type.lower()}"
+                    with open(report_path, 'w', encoding='utf-8') as f:
+                        f.write(result['content'])
+                    
+                    return report_path, "Report generated successfully!"
+                    
                 except Exception as e:
                     logger.error(f"Error in report generation: {str(e)}")
                     return None, f"Error: {str(e)}"
@@ -201,18 +223,34 @@ class ReportGeneratorInterface:
             )
             
             generate_btn.click(
-                fn=on_generate_click,
-                inputs=[provider, model_name, api_key, source_type, file_input, connection_info, query, format_type, include_viz],
-                outputs=[output_file, status]
+                fn=generate_report,
+                inputs=[
+                    provider,
+                    model_name,
+                    api_key,
+                    source_type,
+                    file_input,
+                    connection_info,
+                    query,
+                    format_type,
+                    include_viz
+                ],
+                outputs=[output_file, status],
+                api_name="generate_report"  # Enable async handling
             )
 
-        return app
+            return app
 
     def launch(self):
         """Launch the interface"""
         app = self.create_interface()
+        
+        # Configure queue without concurrency_count
+        # app.queue()  # Simple queue configuration
+        
         app.launch(
             server_name="0.0.0.0",
             server_port=7860,
-            share=False
+            share=False,
+            max_threads=40  # Add thread support for async operations
         )
