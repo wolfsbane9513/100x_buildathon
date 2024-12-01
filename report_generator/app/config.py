@@ -5,7 +5,13 @@ import os
 from dataclasses import dataclass, field
 from dotenv import load_dotenv
 
+# Load environment variables from .env
 load_dotenv()
+
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class Config:
@@ -31,16 +37,18 @@ class Config:
     
     def __post_init__(self) -> None:
         """Initialize paths after dataclass initialization"""
+        # Initialize directory paths
         self.TEMP_DIR = self.BASE_DIR / "temp"
         self.REPORTS_DIR = self.BASE_DIR / "reports"
-    
-    @classmethod
-    def initialize(cls) -> None:
-        """Create necessary directories"""
-        instance = cls()
-        instance.TEMP_DIR.mkdir(exist_ok=True)
-        instance.REPORTS_DIR.mkdir(exist_ok=True)
-        return instance
+        # Ensure directories exist
+        self._create_directories()
+
+    def _create_directories(self) -> None:
+        """Create necessary directories if they do not exist"""
+        self.TEMP_DIR.mkdir(exist_ok=True)
+        self.REPORTS_DIR.mkdir(exist_ok=True)
+        logger.info(f"Temporary directory set to: {self.TEMP_DIR}")
+        logger.info(f"Reports directory set to: {self.REPORTS_DIR}")
 
 # Create and export config instance
 config = Config()

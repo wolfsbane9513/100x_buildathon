@@ -3,18 +3,22 @@ from pathlib import Path
 from datetime import datetime
 from fpdf import FPDF
 from docx import Document
-from app.config import Config
+from app.config import config
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class ReportProcessor:
     def __init__(self):
-        self.output_dir = Config.REPORTS_DIR
+        self.output_dir = config.REPORTS_DIR
     
     def generate_report(self,
                        content: str,
                        output_format: str,
                        visualizations: List[str] = None) -> str:
         """Generate report in specified format"""
-        if output_format not in Config.SUPPORTED_FORMATS:
+        if output_format not in config.SUPPORTED_FORMATS:
             raise ValueError(f"Unsupported format: {output_format}")
         
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -36,10 +40,18 @@ class ReportProcessor:
         pdf.multi_cell(0, 10, content)
         
         if visualizations:
+            pdf.add_page()
+            pdf.set_font("Arial", size=12)
+            pdf.cell(0, 10, "Visualizations", ln=True)
+
             for viz_path in visualizations:
-                pdf.add_page()
-                pdf.image(viz_path, x=10, y=10, w=190)
-        
+                try:
+                    if Path(viz_path).exists():
+                        pdf.add_page()
+                        pdf.image(viz_path, x=10, y=10, w=190)
+                except Exception as e:
+                    logger.error(f"Error adding visualization {viz_path} to PDF: {str(e)}")
+
         pdf.output(str(output_path))
     
     def _generate_docx(self, output_path: Path, content: str, visualizations: List[str]):

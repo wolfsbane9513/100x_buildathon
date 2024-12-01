@@ -6,6 +6,7 @@ import json
 from datetime import datetime
 from report_generator.core.models.manager import ModelManager
 from report_generator.core.agent import ReportGeneratorAgent
+from report_generator.app.config import config
 from fpdf import FPDF
 
 logger = logging.getLogger(__name__)
@@ -294,4 +295,4 @@ class ReportGeneratorInterface:
     def launch(self):
         """Launch the interface"""
         app = self.create_interface()
-        app.launch(server_name="0.0.0.0", server_port=7860, share=False, max_threads=40)
+        app.launch(server_name="0.0.0.0", server_port=7860, share=True, max_threads=40)

@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from app.config import Config
+from app.config import config
 
 def setup_logger(name: str) -> logging.Logger:
     """Configure and return logger"""
@@ -10,7 +10,7 @@ def setup_logger(name: str) -> logging.Logger:
     # Create handlers
     console_handler = logging.StreamHandler()
     file_handler = logging.FileHandler(
-        Config.BASE_DIR / "logs" / f"{name}.log"
+        config.BASE_DIR / "logs" / f"{name}.log"
     )
     
     # Create formatters
