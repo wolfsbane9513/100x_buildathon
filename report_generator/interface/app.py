@@ -12,8 +12,9 @@ from fpdf import FPDF
 logger = logging.getLogger(__name__)
 
 class ReportGeneratorInterface:
-    def __init__(self):
+    def __init__(self, ollama_manager=None):
         self.model_manager = ModelManager()
+        self.ollama_manager = ollama_manager
 
     def create_interface(self):
         """Create Gradio interface"""
@@ -165,7 +166,10 @@ class ReportGeneratorInterface:
 
                     os.makedirs('reports', exist_ok=True)
 
+                    # Initialize the model based on user selection
                     model = self.model_manager.get_model(provider_value, model_name, api_key)
+
+                    # Create a report generation agent with the selected model
                     agent = ReportGeneratorAgent(model)
 
                     context = {
@@ -174,6 +178,7 @@ class ReportGeneratorInterface:
                         'source_type': source_type
                     }
 
+                    # Generate the report using the agent
                     result = await agent.generate_report(
                         query=query_text,
                         context=context,
@@ -195,7 +200,7 @@ class ReportGeneratorInterface:
                     return None, f"Error generating report: {str(e)}"
 
             async def save_pdf_report(result: Dict[str, Any], timestamp: str) -> tuple:
-                """Save report as PDF with enhanced wrapping and font adjustments."""
+                """Save report as PDF with enhanced wrapping, font adjustments, and visualizations."""
                 try:
                     pdf = FPDF()
                     pdf.add_page()
@@ -231,6 +236,12 @@ class ReportGeneratorInterface:
                                 pdf.set_font("Arial", size=8)
                                 pdf.multi_cell(0, 6, line)
 
+                    # Add visualizations if present
+                    if 'visualizations' in result:
+                        for viz_path in result['visualizations']:
+                            pdf.add_page()
+                            pdf.image(viz_path, x=10, y=20, w=180)
+
                     output_path = f"reports/report_{timestamp}.pdf"
                     pdf.output(output_path)
                     return output_path, "Report generated successfully!"
@@ -239,15 +250,25 @@ class ReportGeneratorInterface:
                     raise
 
             async def save_docx_report(result, timestamp):
-                """Save report as DOCX"""
+                """Save report as DOCX with visualizations."""
                 try:
                     from docx import Document
+                    from docx.shared import Inches
+
                     doc = Document()
                     doc.add_heading('Generated Report', 0)
                     doc.add_paragraph(result['content'])
+
                     if result.get('analysis'):
                         doc.add_heading('Data Analysis', level=1)
                         doc.add_paragraph(json.dumps(result['analysis'], indent=2))
+
+                    # Add visualizations if present
+                    if 'visualizations' in result:
+                        doc.add_heading('Visualizations', level=1)
+                        for viz_path in result['visualizations']:
+                            doc.add_picture(viz_path, width=Inches(6))
+
                     output_path = f"reports/report_{timestamp}.docx"
                     doc.save(output_path)
                     return output_path, "Report generated successfully!"
@@ -256,11 +277,11 @@ class ReportGeneratorInterface:
                     raise
 
             async def save_html_report(result, timestamp):
-                """Save report as HTML"""
+                """Save report as HTML, including visualizations."""
                 try:
                     output_path = f"reports/report_{timestamp}.html"
 
-                    # Properly handle the content and analysis for HTML format
+                    # Properly handle the content, analysis, and visualizations for HTML format
                     html_content = """
                     <!DOCTYPE html>
                     <html>
@@ -270,12 +291,18 @@ class ReportGeneratorInterface:
                     <p>{content}</p>
                     <h2>Data Analysis</h2>
                     <pre>{analysis}</pre>
-                    </body>
-                    </html>
+                    <h2>Visualizations</h2>
                     """.format(
                         content=result['content'].replace('\n', '<br>'),
                         analysis=json.dumps(result.get('analysis', {}), indent=2)
                     )
+
+                    # Add visualizations if present
+                    if 'visualizations' in result:
+                        for viz_path in result['visualizations']:
+                            html_content += f'<img src="{viz_path}" alt="Visualization" style="max-width:100%;height:auto;"><br>'
+
+                    html_content += "</body></html>"
 
                     with open(output_path, 'w', encoding='utf-8') as f:
                         f.write(html_content)
@@ -284,7 +311,6 @@ class ReportGeneratorInterface:
                 except Exception as e:
                     logger.error(f"Error saving HTML: {str(e)}")
                     raise
-
 
             provider.change(fn=update_model_list, inputs=provider, outputs=[model_name, api_key, model_info])
             source_type.change(fn=update_data_source, inputs=source_type, outputs=[file_group, db_group, db_type, connection_info, test_connection])

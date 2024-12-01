@@ -1,5 +1,5 @@
 from typing import Dict, List, Type, Optional, Any
-from llama_index.llms.base import LLM
+from llama_index.core.llms import LLM
 from .base import BaseLLM
 from .ollama_models import OllamaLLM
 from .openai_models import OpenAILLM

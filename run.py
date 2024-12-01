@@ -7,6 +7,10 @@ from pathlib import Path
 from dotenv import load_dotenv
 from report_generator.interface.app import ReportGeneratorInterface
 from report_generator.core.ollama_handler import OllamaManager
+from report_generator.core.tools.report_agent import ReportGenerationAgent
+from report_generator.core.models.ollama_models import OllamaLLM
+import asyncio
+import pandas as pd
 
 # Add project root to Python path
 project_root = Path(__file__).parent
@@ -73,6 +77,18 @@ def signal_handler(signum, frame):
     logger.info("Initiating graceful shutdown...")
     sys.exit(0)
 
+async def generate_report(agent, user_prompt, output_format, data):
+    """Generate report using the agent and provided parameters."""
+    try:
+        report_path = await agent.generate_report(
+            user_prompt=user_prompt,
+            output_format=output_format,
+            data=data
+        )
+        logger.info(f"Report generated at: {report_path}")
+    except Exception as e:
+        logger.error(f"Error generating report: {e}")
+
 def main():
     """Main application entry point."""
     try:
@@ -97,9 +113,9 @@ def main():
         else:
             logger.info("Ollama initialization completed successfully")
         
-        # Create and launch interface
+        # Create and launch Gradio interface
         logger.info("Creating interface...")
-        interface = ReportGeneratorInterface()
+        interface = ReportGeneratorInterface(ollama_manager=ollama_manager)  # Pass OllamaManager instance
         
         logger.info("Starting Report Generator application...")
         try:

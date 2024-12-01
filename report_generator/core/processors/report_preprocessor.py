@@ -3,7 +3,7 @@ from pathlib import Path
 from datetime import datetime
 from fpdf import FPDF
 from docx import Document
-from app.config import config
+from report_generator.app.config import config
 import logging
 
 logger = logging.getLogger(__name__)
