@@ -29,6 +29,7 @@ pip install openai>=1.12.0
 pip install gradio>=4.0.0
 pip install python-dotenv>=1.0.0
 pip install plotly>=5.18.0
+pip install fpdf
 
 echo Installation complete!
 echo Verifying installation...

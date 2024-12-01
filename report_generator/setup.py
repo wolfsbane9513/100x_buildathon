@@ -20,6 +20,7 @@ setup(
         "fpdf2>=2.7.6",
         "plotly>=5.18.0",
         "matplotlib>=3.7.1",
+        "fpdf",
     ],
     python_requires=">=3.8",
 )

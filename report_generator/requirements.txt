@@ -72,3 +72,5 @@ sqlalchemy>=2.0.0
 motor>=3.3.0  # MongoDB async driver
 aiomysql>=0.2.0  # MySQL async driver
 asyncpg>=0.29.0  # PostgreSQL async driver
+crewai==0.75
+crewai_tools==0.13.2
